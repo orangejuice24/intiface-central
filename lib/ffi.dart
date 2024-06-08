@@ -7,6 +7,7 @@ import 'bridge_generated.dart';
 // Re-export the bridge so it is only necessary to import this file.
 export 'bridge_generated.dart';
 import 'dart:io' as io;
+import 'package:path/path.dart' as path;
 
 const _base = 'intiface_engine_flutter_bridge';
 
@@ -24,10 +25,28 @@ final _dylib = io.Platform.isWindows
 IntifaceEngineFlutterBridge? api;
 
 void initializeApi() {
-  logInfo("Initializing API static via ${io.Platform.isIOS || io.Platform.isMacOS ? "executable" : _dylib}");
   if (api == null) {
-    api = IntifaceEngineFlutterBridgeImpl(
-        io.Platform.isIOS || io.Platform.isMacOS ? DynamicLibrary.executable() : DynamicLibrary.open(_dylib));
+    final useDylib = !io.Platform.isIOS && !io.Platform.isMacOS;
+
+    String resolvedExecutable = io.Platform.resolvedExecutable;
+
+    /// Workaround for https://github.com/dart-lang/sdk/issues/52309
+    if (io.Platform.isWindows && resolvedExecutable.startsWith(r"UNC\")) {
+      resolvedExecutable = resolvedExecutable.replaceFirst(r"UNC\", r"\\");
+    }
+
+    final String executableDir = path.dirname(resolvedExecutable);
+
+    // Not sure about android or windows here, restricting to linux
+    final dylibDir = (io.Platform.isLinux) ? executableDir : io.Directory.current.path;
+
+    final dylibPath = path.join(dylibDir, _dylib);
+
+    logInfo("Initializing API static via ${useDylib ? dylibPath : "executable"}");
+
+    final impl = (useDylib) ? DynamicLibrary.open(dylibPath) : DynamicLibrary.executable();
+
+    api = IntifaceEngineFlutterBridgeImpl(impl);
   } else {
     logWarning("API already initialized, should not need to initialize again.");
   }
